@@ -1,25 +1,18 @@
 --[[
-    SOLO Animaciones Zombie (sin Korblox ni headless)
-    Optimizado para evitar conflictos y recargas innecesarias
+    Animaciones:
+    - Walk (Zombie)
+    - Run (Zombie)
+    - Jump (Ninja)
+    - Fall (Ninja)
+    Sin idle, sin korblox
 ]]
 
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
--- Lógica de Animaciones
 local function applyAnimations(character)
     local animate = character:WaitForChild("Animate", 5)
     if not animate then return end
-
-    -- IDLE (Zombie)
-    if animate:FindFirstChild("idle") then
-        if animate.idle:FindFirstChild("Animation1") then
-            animate.idle.Animation1.AnimationId = "rbxassetid://616158929"
-        end
-        if animate.idle:FindFirstChild("Animation2") then
-            animate.idle.Animation2.AnimationId = "rbxassetid://616160636"
-        end
-    end
 
     -- WALK (Zombie)
     if animate:FindFirstChild("walk") then
@@ -37,14 +30,29 @@ local function applyAnimations(character)
         end
     end
 
-    -- Refrescar humanoide para aplicar cambios
+    -- JUMP (Ninja)
+    if animate:FindFirstChild("jump") then
+        local jumpAnim = animate.jump:FindFirstChildOfClass("Animation")
+        if jumpAnim then
+            jumpAnim.AnimationId = "rbxassetid://656117878"
+        end
+    end
+
+    -- FALL (Ninja)
+    if animate:FindFirstChild("fall") then
+        local fallAnim = animate.fall:FindFirstChildOfClass("Animation")
+        if fallAnim then
+            fallAnim.AnimationId = "rbxassetid://656115606"
+        end
+    end
+
+    -- Refrescar humanoide
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if humanoid then
         humanoid:ChangeState(Enum.HumanoidStateType.Landed)
     end
 end
 
--- Aplicación segura
 local function onCharacter(character)
     if not character then return end
     character:WaitForChild("Humanoid")
@@ -52,7 +60,6 @@ local function onCharacter(character)
     applyAnimations(character)
 end
 
--- Conexión
 if player.Character then
     onCharacter(player.Character)
 end
