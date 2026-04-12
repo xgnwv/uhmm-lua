@@ -703,12 +703,12 @@ CloseBtn.MouseButton1Click:Connect(function()
     if _G.SexvdkaConnection then _G.SexvdkaConnection:Disconnect() end
     ResetHitboxes() -- Limpiar jugadores al cerrar
     ScreenGui:Destroy() -- Borrar UI completa
-    print("estupidos pobres me comen la polla")
+    print("todomalxdxdxdxdxdddddd")
 end)
 
 -- Notificación Final de Carga
 print("-----------------------------------")
-print("INFIEL POR SIEMPRE, AHREEE")
+print("nonononono")
 print("-----------------------------------")
 --########################## tomatma ##########################
 -- Toggle Global de Visibilidad (F7)
