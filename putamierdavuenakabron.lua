@@ -1,5 +1,5 @@
---// sexvdka | PARTE 1: CORE & CONFIG
---########################## COPIAR DESDE AQUÍ ##########################
+--// ssepsto
+--nonononnono
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -8,16 +8,16 @@ local TweenService = game:GetService("TweenService")
 local LP = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Limpieza de hilos previos para evitar duplicados
+-- quizasmor
 if _G.SexvdkaConnection then _G.SexvdkaConnection:Disconnect() end
 
--- Configuración Global Maestra
+--qeno
 _G.SexvdkaConfig = {
     -- Combat (Lógica MBT)
     AimEnabled = false,
     SpeedEnabled = false,
-    SpeedValue = 0.192, -- Valor inicial MBT
-    TargetPlayer = nil, -- Jugador fijado por Search
+    SpeedValue = 0.192, -- Vnooo
+    TargetPlayer = nil, -- lock
     
     -- Hitbox
     HitboxEnabled = false,
@@ -35,7 +35,7 @@ _G.SexvdkaConfig = {
     LastSize = UDim2.new(0, 550, 0, 350)
 }
 
--- Función de Rastreo: Prioriza Target Seleccionado > Más cercano al Mouse
+-- asdjajsd
 local function GetTarget()
     if _G.SexvdkaConfig.TargetPlayer and _G.SexvdkaConfig.TargetPlayer.Character then
         local root = _G.SexvdkaConfig.TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
