@@ -1,20 +1,16 @@
---// EXTENSIÓN MODULAR (PLUGIN) - No rompe la base
 task.spawn(function()
-    -- Localizar servicios y variables de la base de forma segura
     local CoreGui = game:GetService("CoreGui")
     local Players = game:GetService("Players")
     local UIS = game:GetService("UserInputService")
     local RunService = game:GetService("RunService")
     local LP = Players.LocalPlayer
     
-    -- Espera a que la base esté lista
     repeat task.wait(0.5) until CoreGui:FindFirstChild("sexvdka") and _G.SexvdkaConfig
     
     local Main = CoreGui.sexvdka.Main
     local Content = Main.Content
     local TabContainer = Main.Sidebar.TabContainer
 
-    -- 1. CREAR CATEGORÍA EXTRA
     local ExtraPage = Instance.new("ScrollingFrame", Content)
     ExtraPage.Name = "EXTRAPage"
     ExtraPage.Size = UDim2.new(1, 0, 1, 0)
@@ -25,7 +21,6 @@ task.spawn(function()
     Layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
     Layout.Padding = UDim.new(0, 10)
 
-    -- Botón de la categoría
     local ExtraBtn = Instance.new("TextButton", TabContainer)
     ExtraBtn.Size = UDim2.new(0.8, 0, 0, 25)
     ExtraBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -41,7 +36,6 @@ task.spawn(function()
         ExtraPage.Visible = true
     end)
 
-    -- 2. TRIGGER BOT & RAPID FIRE (Combat)
     local CombatPage = Content:FindFirstChild("COMBATPage")
     if CombatPage then
         _G.SexvdkaConfig.TriggerBot = false
@@ -65,13 +59,11 @@ task.spawn(function()
         end)
     end
 
-    -- 3. MOUSE TRACERS (Visuals/ESP)
     local EspPage = Content:FindFirstChild("ESP & TARGETPage")
     if EspPage then
         _G.SexvdkaConfig.MouseTracers = false
         CreateToggle(EspPage, "Tracers from Mouse", "MouseTracers")
         
-        -- Inyección de lógica en el bucle de renderizado
         RunService.RenderStepped:Connect(function()
             if _G.SexvdkaConfig.EspEnabled and _G.SexvdkaConfig.MouseTracers then
                 _G.SexvdkaConfig.CustomOrigin = UIS:GetMouseLocation()
@@ -81,7 +73,6 @@ task.spawn(function()
         end)
     end
 
-    -- 4. SERVER HOP (Extra)
     CreateToggle(ExtraPage, "Server Hop", "SHop", function(v)
         if v then
             local Http = game:GetService("HttpService")
@@ -96,7 +87,6 @@ task.spawn(function()
         end
     end)
 
-    -- 5. FPS PROFESIONAL (Natural/Visual)
     local FPSLabel = Instance.new("TextLabel", CoreGui.sexvdka)
     FPSLabel.Size = UDim2.new(0, 200, 0, 20)
     FPSLabel.Position = UDim2.new(0.5, -100, 1, -40)
@@ -117,7 +107,6 @@ task.spawn(function()
         end
     end)
 
-    -- AJUSTE AUTOMÁTICO DE ESTILO
     local function Fix(p)
         for _, c in pairs(p:GetChildren()) do
             if c:IsA("Frame") and c.Size.Y.Offset ~= 10 then
