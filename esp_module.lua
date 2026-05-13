@@ -1,7 +1,6 @@
 --[[ 
     SEXVDKA | ULTIMATE EXTERNAL ESP & TARGETING MODULE 
     VERSION: 3.0 (Professional Infrastructure)
-    LINES: +400 (Full Implementation)
 ]]
 
 local Players = game:GetService("Players")
