@@ -1,7 +1,6 @@
 --[[ 
     SEXVDKA | SUPREME EXTERNAL MODULE V4.0
     COMPLEXITY: ULTRA (Skeleton, View-Tracers & Off-Screen)
-    LINES: +550 
 ]]
 
 local Players = game:GetService("Players")
