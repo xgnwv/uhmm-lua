@@ -6,12 +6,13 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local TextChatService = game:GetService("TextChatService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Variables
 local OwnerName = getgenv().Owner:lower()
 local Prefix = "."
-local Whitelist = {} -- {username = true}
+local Whitelist = {}
 local Flinging = false
 local Orbiting = false
 local CurrentTarget = nil
@@ -19,9 +20,9 @@ local OrbitConnection = nil
 local FlingConnection = nil
 local ControlConnection = nil
 
--- Configuración (ÓRBITA MUCHO MÁS ALEJADA)
-local ORBIT_RADIUS = 3500 -- Aumentado para orbitar muy lejos
-local ORBIT_HEIGHT = 150  -- Incrementado proporcionalmente
+-- Configuración
+local ORBIT_RADIUS = 3500
+local ORBIT_HEIGHT = 150
 local VOID_DEPTH = -50000
 local FLING_POWER = 50000
 
@@ -65,7 +66,7 @@ local function GetPlayer(partial)
     return nil
 end
 
--- BLOQUEAR CONTROLES COMPLETAMENTE
+-- CONTROLES
 local function BlockControls()
     if ControlConnection then return end
     
@@ -83,7 +84,6 @@ local function BlockControls()
             hum.WalkSpeed = 0
             hum.JumpPower = 0
             hum.PlatformStand = true
-            hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
         if hrp then
             hrp.AssemblyLinearVelocity = Vector3.zero
@@ -110,12 +110,12 @@ local function UnblockControls()
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 end
 
--- ORBITA ULTRA-RÁPIDA Y DISTANTE
+-- ÓRBITA
 local function StartOrbit()
     if Orbiting then return end
     Orbiting = true
     
-    print("[Stand] Iniciando órbita a gran distancia...")
+    print("[Stand] Órbita iniciada...")
     BlockControls()
     
     local angle = math.random() * math.pi * 2
@@ -127,12 +127,13 @@ local function StartOrbit()
         if not hrp then return end
         
         local targetPos = Vector3.zero
-        
         if owner and owner.Character then
-            targetPos = owner.Character:GetPivot().Position
+            local ownerHRP = owner.Character:FindFirstChild("HumanoidRootPart")
+            if ownerHRP then
+                targetPos = ownerHRP.Position
+            end
         end
         
-        -- Velocidad de giro y fluctuación de distancia
         angle = angle + 0.08
         local radius = ORBIT_RADIUS + math.random(-300, 300)
         
@@ -147,12 +148,6 @@ local function StartOrbit()
         hrp.CFrame = finalCFrame
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        
-        local hum = GetHumanoid()
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Physics)
-            hum.PlatformStand = true
-        end
     end)
 end
 
@@ -166,7 +161,7 @@ local function StopOrbit()
     print("[Stand] Órbita detenida")
 end
 
--- FLING (LOOP KILL)
+-- FLING / LOOPKILL
 local function StopLoopFling()
     Flinging = false
     CurrentTarget = nil
@@ -193,7 +188,7 @@ local function StopLoopFling()
         hrp.AssemblyAngularVelocity = Vector3.zero
     end
     
-    print("[Stand] LoopKill detenido")
+    print("[Stand] Fling detenido")
 end
 
 local function StartLoopFling(target)
@@ -205,8 +200,6 @@ local function StartLoopFling(target)
     
     Flinging = true
     CurrentTarget = target
-    
-    print("[Stand] LoopKill iniciado: " .. target.Name)
     
     local hrp = GetHRP()
     if not hrp then return end
@@ -238,7 +231,6 @@ local function StartLoopFling(target)
         local tHum = CurrentTarget.Character:FindFirstChild("Humanoid")
         
         if not tHRP or not tHum or tHum.Health <= 0 then
-            print("[Stand] Objetivo muerto o perdido")
             StopLoopFling()
             return
         end
@@ -262,59 +254,18 @@ local function StartLoopFling(target)
             math.random(-5000, 5000)
         )
     end)
-    
-    task.spawn(function()
-        while Flinging and CurrentTarget do
-            task.wait(0.5)
-            if not CurrentTarget.Character then
-                StopLoopFling()
-                break
-            end
-            local th = CurrentTarget.Character:FindFirstChild("Humanoid")
-            if not th or th.Health <= 0 then
-                StopLoopFling()
-                break
-            end
-        end
-    end)
 end
 
 -- VOID
 local function VoidPlayer(target)
     if not target or not target.Character then return end
-    
-    print("[Stand] Enviando al vacío: " .. target.Name)
-    
     local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
     if tHRP then
         tHRP.AssemblyLinearVelocity = Vector3.new(0, -10000, 0)
         tHRP.CFrame = CFrame.new(0, VOID_DEPTH, 0)
     end
-    
     task.wait(0.1)
     StopLoopFling()
-end
-
--- FALL
-local function FallAll()
-    print("[Stand] Activando FALL para todos...")
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        if IsWhitelisted(player.Name) then continue end
-        
-        if player.Character then
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 1000, 0)
-                task.delay(0.5, function()
-                    if hrp then
-                        hrp.AssemblyLinearVelocity = Vector3.new(0, -5000, 0)
-                    end
-                end)
-            end
-        end
-    end
 end
 
 -- BRING
@@ -326,37 +277,18 @@ local function BringStand()
     local hrp = GetHRP()
     
     if owner and owner.Character and hrp then
-        local ownerPos = owner.Character:GetPivot().Position
-        hrp.CFrame = CFrame.new(ownerPos + Vector3.new(0, 5, 3))
-        print("[Stand] Stand traído al owner")
+        local ownerHRP = owner.Character:FindFirstChild("HumanoidRootPart")
+        if ownerHRP then
+            hrp.CFrame = CFrame.new(ownerHRP.Position + Vector3.new(0, 5, 3))
+        end
     end
 end
 
--- WHITELIST
-local function AddWhitelist(name)
-    local player = GetPlayer(name)
-    if player then
-        Whitelist[player.Name:lower()] = true
-        print("[Stand] Agregado a whitelist: " .. player.Name)
-    else
-        Whitelist[name:lower()] = true
-        print("[Stand] Agregado a whitelist (offline): " .. name)
-    end
-end
-
-local function RemoveWhitelist(name)
-    local key = name:lower()
-    if Whitelist[key] then
-        Whitelist[key] = nil
-        print("[Stand] Removido de whitelist: " .. name)
-    end
-end
-
--- COMANDOS
-local function ProcessCommand(msg, sender)
-    local senderName = sender.Name:lower()
+-- COMANDOS DE PROCESAMIENTO
+local function ProcessCommand(msg, senderName)
+    senderName = senderName:lower()
     
-    if senderName ~= OwnerName and not IsWhitelisted(sender.Name) then
+    if senderName ~= OwnerName and not Whitelist[senderName] then
         return
     end
     
@@ -380,11 +312,10 @@ local function ProcessCommand(msg, sender)
     elseif cmd == "b" then
         BringStand()
     elseif cmd == "wl" and args[2] then
-        AddWhitelist(args[2])
+        local player = GetPlayer(args[2])
+        if player then Whitelist[player.Name:lower()] = true end
     elseif cmd == "unwl" and args[2] then
-        RemoveWhitelist(args[2])
-    elseif cmd == "fall" then
-        FallAll()
+        Whitelist[args[2]:lower()] = nil
     elseif cmd == "orbit" then
         StartOrbit()
     elseif cmd == "unorbit" then
@@ -392,22 +323,34 @@ local function ProcessCommand(msg, sender)
     end
 end
 
--- CONEXIONES DE CHAT
-for _, p in ipairs(Players:GetPlayers()) do
-    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
+-- SISTEMA DE DETECCIÓN DE CHAT COMPATIBLE CON AMBOS SISTEMAS
+local function RegisterPlayer(p)
+    p.Chatted:Connect(function(m) ProcessCommand(m, p.Name) end)
 end
 
-Players.PlayerAdded:Connect(function(p)
-    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
-end)
+for _, p in ipairs(Players:GetPlayers()) do
+    RegisterPlayer(p)
+end
+Players.PlayerAdded:Connect(RegisterPlayer)
 
-LocalPlayer.CharacterAdded:Connect(function(char)
-    task.wait(0.3)
+-- Soporte para TextChatService (NUEVO CHAT DE ROBLOX)
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    TextChatService.MessageReceived:Connect(function(message)
+        if message.TextSource then
+            local senderPlayer = Players:GetPlayerByUserId(message.TextSource.UserId)
+            if senderPlayer then
+                ProcessCommand(message.Text, senderPlayer.Name)
+            end
+        end
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
     if Orbiting then
         StartOrbit()
     end
 end)
 
 task.delay(1, StartOrbit)
-
-print("[STAND] Creado e iniciado correctamente con distancia extendida.")
+print("[STAND] Listo y ejecutado correctamente.")
