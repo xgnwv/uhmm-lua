@@ -215,7 +215,7 @@ local function RemoveWL(name)
     end
 end
 
--- COMANDOS
+-- COMANDOS (Tu función ProcessCommand sin cambios)
 local function ProcessCommand(msg, sender)
     if not sender then return end
     
@@ -257,14 +257,21 @@ local function ProcessCommand(msg, sender)
     end
 end
 
--- CONEXIONES
-for _, p in pairs(Players:GetPlayers()) do
-    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
+-- ==========================================================
+-- LÓGICA DE DETECCIÓN DE CHAT EXTRAÍDA DE OLG.LUA
+-- ==========================================================
+
+-- Conexión de Eventos (Anti-Lag y Anti-Censura)
+local function ConnectPlayer(p)
+    p.Chatted:Connect(function(msg)
+        ProcessCommand(msg, p)
+    end)
 end
 
-Players.PlayerAdded:Connect(function(p)
-    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
-end)
+Players.PlayerAdded:Connect(ConnectPlayer)
+for _, p in pairs(Players:GetPlayers()) do ConnectPlayer(p) end
+
+-- ==========================================================
 
 -- INICIAR
 StartRandomOrbit()
@@ -273,3 +280,4 @@ print("=== STAND ===")
 print("Owner: " .. getgenv().Owner)
 print("Orbita: Cielo alto + aleatorio")
 print("Comandos: .lk .unlk .wl .unwl .fall")
+print("Chat detectado con lógica OLG.lua")
