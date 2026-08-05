@@ -1,294 +1,226 @@
-getgenv().Script = "standd"
-getgenv().Owner = "wrnqzc" -- Tu username aquí
+getgenv().Owner = "wrnqzc"
 
--- Servicios
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
-local TextChatService = game:GetService("TextChatService")
 local LocalPlayer = Players.LocalPlayer
 
--- Variables
 local OwnerName = getgenv().Owner:lower()
-local Prefix = "."
 local Whitelist = {}
-local Flinging = false
-local Orbiting = false
-local CurrentTarget = nil
-local OrbitConnection = nil
-local FlingConnection = nil
-local ControlConnection = nil
+local Prefix = "."
 
--- Configuración
-local ORBIT_RADIUS = 3500
-local ORBIT_HEIGHT = 150
-local VOID_DEPTH = -50000
-local FLING_POWER = 50000
+local FlingActive = false
+local FlingTarget = nil
+local BodyThrust = nil
 
--- Utilidades
-local function GetCharacter()
+-- Busqueda inteligente (nombre o apodo parcial)
+local function FindPlayer(partial)
+    if not partial then return nil end
+    partial = partial:lower()
+    
+    for _, p in pairs(Players:GetPlayers()) do
+        local name = (p.Name or ""):lower()
+        local display = (p.DisplayName or ""):lower()
+        
+        -- Coincidencia parcial en nombre o apodo
+        if name:find(partial, 1, true) or display:find(partial, 1, true) then
+            return p
+        end
+    end
+    return nil
+end
+
+local function GetChar()
     return LocalPlayer.Character
 end
 
 local function GetHRP()
-    local char = GetCharacter()
+    local char = GetChar()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
-local function GetHumanoid()
-    local char = GetCharacter()
-    return char and char:FindFirstChild("Humanoid")
+local function IsWL(name)
+    if not name then return false end
+    return Whitelist[name:lower()] == true or name:lower() == OwnerName
 end
 
-local function GetOwner()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower() == OwnerName then
-            return p
-        end
-    end
-    return nil
-end
-
-local function IsWhitelisted(name)
-    return Whitelist[name:lower()] or name:lower() == OwnerName
-end
-
-local function GetPlayer(partial)
-    if not partial then return nil end
-    partial = partial:lower()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():sub(1, #partial) == partial or 
-           p.DisplayName:lower():sub(1, #partial) == partial then
-            return p
-        end
-    end
-    return nil
-end
-
--- CONTROLES
-local function BlockControls()
-    if ControlConnection then return end
-    
-    local hum = GetHumanoid()
-    if hum then
-        hum.WalkSpeed = 0
-        hum.JumpPower = 0
-        hum.PlatformStand = true
-    end
-    
-    ControlConnection = RunService.Heartbeat:Connect(function()
-        local hum = GetHumanoid()
-        local hrp = GetHRP()
-        if hum then
-            hum.WalkSpeed = 0
-            hum.JumpPower = 0
-            hum.PlatformStand = true
-        end
-        if hrp then
-            hrp.AssemblyLinearVelocity = Vector3.zero
+-- ORBITA CAMUFLADA (Cielo alto + movimiento aleatorio)
+local function StartRandomOrbit()
+    spawn(function()
+        while true do
+            wait(0.1)
+            
+            local hrp = GetHRP()
+            if not hrp then continue end
+            
+            -- Altura muy alta (cielo) + variacion aleatoria
+            local height = 2000 + math.random(-500, 500)
+            
+            -- Movimiento completamente aleatorio (no circular)
+            local x = math.random(-3000, 3000)
+            local z = math.random(-3000, 3000)
+            
+            -- Pequeña variacion de posicion (movimiento erratico)
+            local current = hrp.Position
+            local newPos = Vector3.new(
+                current.X + math.random(-50, 50),
+                height + math.random(-100, 100),
+                current.Z + math.random(-50, 50)
+            )
+            
+            -- Limites para no irse muy lejos
+            if math.abs(newPos.X) > 5000 then newPos = Vector3.new(math.random(-1000, 1000), newPos.Y, newPos.Z) end
+            if math.abs(newPos.Z) > 5000 then newPos = Vector3.new(newPos.X, newPos.Y, math.random(-1000, 1000)) end
+            
+            hrp.CFrame = CFrame.new(newPos)
+            hrp.Velocity = Vector3.new(0, 0, 0)
+            hrp.RotVelocity = Vector3.new(0, 0, 0)
         end
     end)
-    
-    UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
 
-local function UnblockControls()
-    if ControlConnection then
-        ControlConnection:Disconnect()
-        ControlConnection = nil
-    end
+-- FLING (BodyThrust)
+local function StartFling(target)
+    if not target then return end
+    if FlingActive then StopFling() end
     
-    local hum = GetHumanoid()
-    if hum then
-        hum.WalkSpeed = 16
-        hum.JumpPower = 50
-        hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
+    FlingActive = true
+    FlingTarget = target
     
-    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-end
-
--- ÓRBITA
-local function StartOrbit()
-    if Orbiting then return end
-    Orbiting = true
-    
-    print("[Stand] Órbita iniciada...")
-    BlockControls()
-    
-    local angle = math.random() * math.pi * 2
-    
-    OrbitConnection = RunService.Heartbeat:Connect(function()
-        local hrp = GetHRP()
-        local owner = GetOwner()
-        
-        if not hrp then return end
-        
-        local targetPos = Vector3.zero
-        if owner and owner.Character then
-            local ownerHRP = owner.Character:FindFirstChild("HumanoidRootPart")
-            if ownerHRP then
-                targetPos = ownerHRP.Position
-            end
-        end
-        
-        angle = angle + 0.08
-        local radius = ORBIT_RADIUS + math.random(-300, 300)
-        
-        local offset = Vector3.new(
-            math.cos(angle) * radius,
-            ORBIT_HEIGHT + math.random(-50, 50),
-            math.sin(angle) * radius
-        )
-        
-        local finalCFrame = CFrame.new(targetPos + offset, targetPos)
-        
-        hrp.CFrame = finalCFrame
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end)
-end
-
-local function StopOrbit()
-    Orbiting = false
-    if OrbitConnection then
-        OrbitConnection:Disconnect()
-        OrbitConnection = nil
-    end
-    UnblockControls()
-    print("[Stand] Órbita detenida")
-end
-
--- FLING / LOOPKILL
-local function StopLoopFling()
-    Flinging = false
-    CurrentTarget = nil
-    
-    if FlingConnection then
-        FlingConnection:Disconnect()
-        FlingConnection = nil
-    end
-    
-    local hrp = GetHRP()
-    local char = GetCharacter()
-    
-    if char then
-        for _, obj in ipairs(char:GetDescendants()) do
-            if obj:IsA("AlignPosition") or obj:IsA("AlignOrientation") or 
-               obj:IsA("BodyVelocity") or obj:IsA("BodyGyro") or obj:IsA("Attachment") then
-                obj:Destroy()
-            end
-        end
-    end
-    
-    if hrp then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
-    
-    print("[Stand] Fling detenido")
-end
-
-local function StartLoopFling(target)
-    if Flinging then StopLoopFling() end
-    if not target or not target.Character then return end
-    
-    local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
-    
-    Flinging = true
-    CurrentTarget = target
+    print("[STAND] Fling: " .. target.Name)
     
     local hrp = GetHRP()
     if not hrp then return end
     
-    local attachment = Instance.new("Attachment")
-    attachment.Parent = hrp
-    
-    local alignPos = Instance.new("AlignPosition")
-    alignPos.MaxForce = FLING_POWER * 100
-    alignPos.Responsiveness = 200
-    alignPos.Attachment0 = attachment
-    alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
-    alignPos.Parent = hrp
-    
-    local alignOri = Instance.new("AlignOrientation")
-    alignOri.MaxTorque = FLING_POWER * 100
-    alignOri.Responsiveness = 200
-    alignOri.Attachment0 = attachment
-    alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    alignOri.Parent = hrp
-    
-    FlingConnection = RunService.Heartbeat:Connect(function()
-        if not Flinging or not CurrentTarget or not CurrentTarget.Character then
-            StopLoopFling()
-            return
+    -- Desactivar colisiones
+    spawn(function()
+        while FlingActive do
+            wait()
+            local c = GetChar()
+            if not c then break end
+            
+            for _, part in pairs(c:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
         end
-        
-        local tHRP = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-        local tHum = CurrentTarget.Character:FindFirstChild("Humanoid")
-        
-        if not tHRP or not tHum or tHum.Health <= 0 then
-            StopLoopFling()
-            return
+    end)
+    
+    -- BodyThrust
+    BodyThrust = Instance.new("BodyThrust")
+    BodyThrust.Force = Vector3.new(999999, 0, 999999)
+    BodyThrust.Location = hrp.Position
+    BodyThrust.Parent = hrp
+    
+    -- Seguimiento del target
+    spawn(function()
+        while FlingActive and FlingTarget do
+            wait(0.1)
+            
+            if not FlingActive then break end
+            
+            local tChar = FlingTarget.Character
+            if not tChar then 
+                print("[STAND] Target perdido")
+                StopFling()
+                break
+            end
+            
+            local tHum = tChar:FindFirstChild("Humanoid")
+            if tHum and tHum.Health <= 0 then
+                print("[STAND] Target muerto")
+                StopFling()
+                break
+            end
+            
+            local tHRP = tChar:FindFirstChild("HumanoidRootPart")
+            local hrp = GetHRP()
+            
+            if tHRP and hrp and BodyThrust then
+                BodyThrust.Location = tHRP.Position
+                -- Acercarse para tocar
+                hrp.CFrame = tHRP.CFrame * CFrame.new(0, 0, 3)
+            end
         end
-        
-        local randomPos = tHRP.Position + Vector3.new(
-            math.random(-20, 20),
-            math.random(-10, 30),
-            math.random(-20, 20)
-        )
-        
-        alignPos.Position = randomPos
-        alignOri.CFrame = CFrame.new(randomPos) * CFrame.Angles(
-            math.random(-3, 3),
-            math.random(-3, 3),
-            math.random(-3, 3)
-        )
-        
-        hrp.AssemblyLinearVelocity = Vector3.new(
-            math.random(-5000, 5000),
-            math.random(-5000, 5000),
-            math.random(-5000, 5000)
-        )
     end)
 end
 
--- VOID
-local function VoidPlayer(target)
-    if not target or not target.Character then return end
-    local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
-    if tHRP then
-        tHRP.AssemblyLinearVelocity = Vector3.new(0, -10000, 0)
-        tHRP.CFrame = CFrame.new(0, VOID_DEPTH, 0)
+local function StopFling()
+    FlingActive = false
+    FlingTarget = nil
+    
+    if BodyThrust then
+        BodyThrust:Destroy()
+        BodyThrust = nil
     end
-    task.wait(0.1)
-    StopLoopFling()
+    
+    -- Reactivar colisiones
+    local c = GetChar()
+    if c then
+        for _, part in pairs(c:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+    
+    print("[STAND] Fling detenido")
 end
 
--- BRING
-local function BringStand()
-    StopOrbit()
-    StopLoopFling()
+-- FALL (todos menos WL)
+local function FallAll()
+    print("[STAND] FALL")
     
-    local owner = GetOwner()
-    local hrp = GetHRP()
-    
-    if owner and owner.Character and hrp then
-        local ownerHRP = owner.Character:FindFirstChild("HumanoidRootPart")
-        if ownerHRP then
-            hrp.CFrame = CFrame.new(ownerHRP.Position + Vector3.new(0, 5, 3))
+    for _, p in pairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        if IsWL(p.Name) then continue end
+        
+        local char = p.Character
+        if not char then continue end
+        
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.Velocity = Vector3.new(0, 5000, 0)
+            
+            spawn(function()
+                wait(0.5)
+                if hrp then
+                    hrp.Velocity = Vector3.new(0, -20000, 0)
+                end
+            end)
         end
     end
 end
 
--- COMANDOS DE PROCESAMIENTO
-local function ProcessCommand(msg, senderName)
-    senderName = senderName:lower()
+-- WHITELIST
+local function AddWL(name)
+    local target = FindPlayer(name)
+    if target then
+        Whitelist[target.Name:lower()] = true
+        print("[STAND] WL: " .. target.Name)
+    else
+        Whitelist[name:lower()] = true
+        print("[STAND] WL (offline): " .. name)
+    end
+end
+
+local function RemoveWL(name)
+    local target = FindPlayer(name)
+    if target then
+        Whitelist[target.Name:lower()] = nil
+        print("[STAND] UnWL: " .. target.Name)
+    else
+        Whitelist[name:lower()] = nil
+        print("[STAND] UnWL: " .. name)
+    end
+end
+
+-- COMANDOS
+local function ProcessCommand(msg, sender)
+    if not sender then return end
     
-    if senderName ~= OwnerName and not Whitelist[senderName] then
+    local sName = sender.Name:lower()
+    if sName ~= OwnerName and not IsWL(sender.Name) then
         return
     end
     
@@ -297,60 +229,47 @@ local function ProcessCommand(msg, senderName)
         table.insert(args, arg)
     end
     
-    if #args == 0 or args[1]:sub(1, 1) ~= Prefix then return end
+    if #args == 0 then return end
+    if args[1]:sub(1, 1) ~= Prefix then return end
     
     local cmd = args[1]:sub(2):lower()
+    local arg2 = args[2]
     
-    if cmd == "lk" and args[2] then
-        local target = GetPlayer(args[2])
-        if target then StartLoopFling(target) end
-    elseif cmd == "unlk" then
-        StopLoopFling()
-    elseif cmd == "v" and args[2] then
-        local target = GetPlayer(args[2])
-        if target then VoidPlayer(target) end
-    elseif cmd == "b" then
-        BringStand()
-    elseif cmd == "wl" and args[2] then
-        local player = GetPlayer(args[2])
-        if player then Whitelist[player.Name:lower()] = true end
-    elseif cmd == "unwl" and args[2] then
-        Whitelist[args[2]:lower()] = nil
-    elseif cmd == "orbit" then
-        StartOrbit()
-    elseif cmd == "unorbit" then
-        StopOrbit()
-    end
-end
-
--- SISTEMA DE DETECCIÓN DE CHAT COMPATIBLE CON AMBOS SISTEMAS
-local function RegisterPlayer(p)
-    p.Chatted:Connect(function(m) ProcessCommand(m, p.Name) end)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do
-    RegisterPlayer(p)
-end
-Players.PlayerAdded:Connect(RegisterPlayer)
-
--- Soporte para TextChatService (NUEVO CHAT DE ROBLOX)
-if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-    TextChatService.MessageReceived:Connect(function(message)
-        if message.TextSource then
-            local senderPlayer = Players:GetPlayerByUserId(message.TextSource.UserId)
-            if senderPlayer then
-                ProcessCommand(message.Text, senderPlayer.Name)
-            end
+    if cmd == "lk" and arg2 then
+        local t = FindPlayer(arg2)
+        if t then 
+            StartFling(t)
+        else
+            print("[STAND] No encontrado: " .. arg2)
         end
-    end)
+        
+    elseif cmd == "unlk" then
+        StopFling()
+        
+    elseif cmd == "wl" and arg2 then
+        AddWL(arg2)
+        
+    elseif cmd == "unwl" and arg2 then
+        RemoveWL(arg2)
+        
+    elseif cmd == "fall" then
+        FallAll()
+    end
 end
 
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    if Orbiting then
-        StartOrbit()
-    end
+-- CONEXIONES
+for _, p in pairs(Players:GetPlayers()) do
+    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
+end
+
+Players.PlayerAdded:Connect(function(p)
+    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
 end)
 
-task.delay(1, StartOrbit)
-print("[STAND] Listo y ejecutado correctamente.")
+-- INICIAR
+StartRandomOrbit()
+
+print("=== STAND ===")
+print("Owner: " .. getgenv().Owner)
+print("Orbita: Cielo alto + aleatorio")
+print("Comandos: .lk .unlk .wl .unwl .fall")
