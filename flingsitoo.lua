@@ -6,13 +6,12 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
-local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 
 -- Variables
-local OwnerName = string.lower(getgenv().Owner or "")
+local OwnerName = getgenv().Owner:lower()
 local Prefix = "."
-local Whitelist = {}
+local Whitelist = {} -- {username = true}
 local Flinging = false
 local Orbiting = false
 local CurrentTarget = nil
@@ -20,73 +19,57 @@ local OrbitConnection = nil
 local FlingConnection = nil
 local ControlConnection = nil
 
--- Configuración AUMENTADA
-local ORBIT_RADIUS = 3000 -- Mucho más lejos
-local ORBIT_HEIGHT = 100
+-- Configuración (ÓRBITA MUCHO MÁS ALEJADA)
+local ORBIT_RADIUS = 3500 -- Aumentado para orbitar muy lejos
+local ORBIT_HEIGHT = 150  -- Incrementado proporcionalmente
 local VOID_DEPTH = -50000
-local FLING_POWER = 999999
+local FLING_POWER = 50000
 
--- Función segura para obtener character
-local function GetChar(player)
-    if not player then player = LocalPlayer end
-    return player.Character
+-- Utilidades
+local function GetCharacter()
+    return LocalPlayer.Character
 end
 
-local function GetHRP(player)
-    local char = GetChar(player)
-    if char then
-        return char:FindFirstChild("HumanoidRootPart")
-    end
-    return nil
+local function GetHRP()
+    local char = GetCharacter()
+    return char and char:FindFirstChild("HumanoidRootPart")
 end
 
-local function GetHum(player)
-    local char = GetChar(player)
-    if char then
-        return char:FindFirstChild("Humanoid")
-    end
-    return nil
+local function GetHumanoid()
+    local char = GetCharacter()
+    return char and char:FindFirstChild("Humanoid")
 end
 
--- Buscar owner
-local function GetOwnerPlayer()
+local function GetOwner()
     for _, p in ipairs(Players:GetPlayers()) do
-        if string.lower(p.Name) == OwnerName then
+        if p.Name:lower() == OwnerName then
             return p
         end
     end
     return nil
 end
 
--- Verificar whitelist
-local function IsWL(name)
-    if not name then return false end
-    local n = string.lower(name)
-    return n == OwnerName or Whitelist[n] == true
+local function IsWhitelisted(name)
+    return Whitelist[name:lower()] or name:lower() == OwnerName
 end
 
--- Buscar jugador (versión segura)
-local function FindPlayer(partial)
-    if not partial or partial == "" then return nil end
-    partial = string.lower(partial)
-    
+local function GetPlayer(partial)
+    if not partial then return nil end
+    partial = partial:lower()
     for _, p in ipairs(Players:GetPlayers()) do
-        local nameLower = string.lower(p.Name)
-        local displayLower = string.lower(p.DisplayName)
-        
-        if string.sub(nameLower, 1, #partial) == partial or 
-           string.sub(displayLower, 1, #partial) == partial then
+        if p.Name:lower():sub(1, #partial) == partial or 
+           p.DisplayName:lower():sub(1, #partial) == partial then
             return p
         end
     end
     return nil
 end
 
--- Bloquear controles completamente
+-- BLOQUEAR CONTROLES COMPLETAMENTE
 local function BlockControls()
     if ControlConnection then return end
     
-    local hum = GetHum()
+    local hum = GetHumanoid()
     if hum then
         hum.WalkSpeed = 0
         hum.JumpPower = 0
@@ -94,23 +77,20 @@ local function BlockControls()
     end
     
     ControlConnection = RunService.Heartbeat:Connect(function()
-        local hum = GetHum()
+        local hum = GetHumanoid()
         local hrp = GetHRP()
-        
         if hum then
             hum.WalkSpeed = 0
             hum.JumpPower = 0
             hum.PlatformStand = true
-            pcall(function()
-                hum:ChangeState(Enum.HumanoidStateType.Physics)
-            end)
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
-        
         if hrp then
             hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.RotVelocity = Vector3.zero
         end
     end)
+    
+    UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
 
 local function UnblockControls()
@@ -119,68 +99,59 @@ local function UnblockControls()
         ControlConnection = nil
     end
     
-    local hum = GetHum()
+    local hum = GetHumanoid()
     if hum then
         hum.WalkSpeed = 16
         hum.JumpPower = 50
         hum.PlatformStand = false
-        pcall(function()
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end)
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
+    
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 end
 
--- ORBITA ULTRA-RÁPIDA Y LEJOS (3000 studs)
+-- ORBITA ULTRA-RÁPIDA Y DISTANTE
 local function StartOrbit()
     if Orbiting then return end
     Orbiting = true
     
-    print("[Stand] Órbita 3000 studs iniciada...")
+    print("[Stand] Iniciando órbita a gran distancia...")
     BlockControls()
     
     local angle = math.random() * math.pi * 2
     
     OrbitConnection = RunService.Heartbeat:Connect(function()
-        if not Orbiting then return end
-        
         local hrp = GetHRP()
+        local owner = GetOwner()
+        
         if not hrp then return end
         
-        local owner = GetOwnerPlayer()
-        local centerPos
+        local targetPos = Vector3.zero
         
-        if owner and GetHRP(owner) then
-            centerPos = GetHRP(owner).Position
-        else
-            -- Si no hay owner, orbitar alrededor de spawn
-            centerPos = Vector3.new(0, 100, 0)
+        if owner and owner.Character then
+            targetPos = owner.Character:GetPivot().Position
         end
         
-        -- Velocidad EXTREMA
-        angle = angle + 0.3
+        -- Velocidad de giro y fluctuación de distancia
+        angle = angle + 0.08
+        local radius = ORBIT_RADIUS + math.random(-300, 300)
         
-        -- Radio variable 3000 studs
-        local radius = ORBIT_RADIUS + math.random(-500, 500)
-        local height = ORBIT_HEIGHT + math.random(-100, 300)
-        
-        local newPos = Vector3.new(
-            centerPos.X + math.cos(angle) * radius,
-            centerPos.Y + height,
-            centerPos.Z + math.sin(angle) * radius
+        local offset = Vector3.new(
+            math.cos(angle) * radius,
+            ORBIT_HEIGHT + math.random(-50, 50),
+            math.sin(angle) * radius
         )
         
-        -- Teletransporte instantáneo
-        hrp.CFrame = CFrame.new(newPos, centerPos)
-        hrp.Velocity = Vector3.zero
-        hrp.RotVelocity = Vector3.zero
+        local finalCFrame = CFrame.new(targetPos + offset, targetPos)
         
-        -- Anti-muerte
-        local hum = GetHum()
+        hrp.CFrame = finalCFrame
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        
+        local hum = GetHumanoid()
         if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
             hum.PlatformStand = true
-            pcall(function()
-                hum:ChangeState(Enum.HumanoidStateType.Physics)
-            end)
         end
     end)
 end
@@ -195,8 +166,8 @@ local function StopOrbit()
     print("[Stand] Órbita detenida")
 end
 
--- Detener fling
-local function StopFling()
+-- FLING (LOOP KILL)
+local function StopLoopFling()
     Flinging = false
     CurrentTarget = nil
     
@@ -205,123 +176,103 @@ local function StopFling()
         FlingConnection = nil
     end
     
-    local char = GetChar()
+    local hrp = GetHRP()
+    local char = GetCharacter()
+    
     if char then
         for _, obj in ipairs(char:GetDescendants()) do
-            if obj:IsA("BodyVelocity") or obj:IsA("BodyGyro") or 
-               obj:IsA("BodyPosition") or obj:IsA("AlignPosition") or 
-               obj:IsA("AlignOrientation") or obj:IsA("Attachment") then
+            if obj:IsA("AlignPosition") or obj:IsA("AlignOrientation") or 
+               obj:IsA("BodyVelocity") or obj:IsA("BodyGyro") or obj:IsA("Attachment") then
                 obj:Destroy()
             end
         end
     end
     
-    local hrp = GetHRP()
     if hrp then
-        hrp.Velocity = Vector3.zero
-        hrp.RotVelocity = Vector3.zero
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
     end
+    
+    print("[Stand] LoopKill detenido")
 end
 
--- FLING 100% EFECTIVO (LoopKill)
-local function StartFling(target)
-    if Flinging then StopFling() end
-    if not target then return end
+local function StartLoopFling(target)
+    if Flinging then StopLoopFling() end
+    if not target or not target.Character then return end
     
-    local tChar = GetChar(target)
-    if not tChar then return end
-    
-    local tHRP = tChar:FindFirstChild("HumanoidRootPart")
-    if not tHRP then return end
+    local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return end
     
     Flinging = true
     CurrentTarget = target
     
-    print("[Stand] LoopKill: " .. target.Name)
+    print("[Stand] LoopKill iniciado: " .. target.Name)
     
     local hrp = GetHRP()
-    local hum = GetHum()
     if not hrp then return end
     
-    -- Crear attachments y align
-    local attachment0 = Instance.new("Attachment")
-    attachment0.Parent = hrp
+    local attachment = Instance.new("Attachment")
+    attachment.Parent = hrp
     
     local alignPos = Instance.new("AlignPosition")
-    alignPos.Attachment0 = attachment0
-    alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
-    alignPos.MaxForce = FLING_POWER
+    alignPos.MaxForce = FLING_POWER * 100
     alignPos.Responsiveness = 200
+    alignPos.Attachment0 = attachment
+    alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
     alignPos.Parent = hrp
     
     local alignOri = Instance.new("AlignOrientation")
-    alignOri.Attachment0 = attachment0
-    alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    alignOri.MaxTorque = FLING_POWER
+    alignOri.MaxTorque = FLING_POWER * 100
     alignOri.Responsiveness = 200
+    alignOri.Attachment0 = attachment
+    alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
     alignOri.Parent = hrp
     
     FlingConnection = RunService.Heartbeat:Connect(function()
-        if not Flinging or not CurrentTarget then
-            StopFling()
+        if not Flinging or not CurrentTarget or not CurrentTarget.Character then
+            StopLoopFling()
             return
         end
         
-        local tChar = GetChar(CurrentTarget)
-        if not tChar then
-            StopFling()
+        local tHRP = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
+        local tHum = CurrentTarget.Character:FindFirstChild("Humanoid")
+        
+        if not tHRP or not tHum or tHum.Health <= 0 then
+            print("[Stand] Objetivo muerto o perdido")
+            StopLoopFling()
             return
         end
         
-        local tHRP = tChar:FindFirstChild("HumanoidRootPart")
-        local tHum = tChar:FindFirstChild("Humanoid")
-        
-        if not tHRP or not tHum then
-            StopFling()
-            return
-        end
-        
-        if tHum.Health <= 0 then
-            print("[Stand] Objetivo eliminado")
-            StopFling()
-            return
-        end
-        
-        -- FLING AGRESIVO
-        local targetPos = tHRP.Position + Vector3.new(
-            math.random(-30, 30),
-            math.random(-20, 40),
-            math.random(-30, 30)
+        local randomPos = tHRP.Position + Vector3.new(
+            math.random(-20, 20),
+            math.random(-10, 30),
+            math.random(-20, 20)
         )
         
-        alignPos.Position = targetPos
-        alignOri.CFrame = CFrame.new(targetPos) * CFrame.Angles(
-            math.random(-5, 5),
-            math.random(-5, 5),
-            math.random(-5, 5)
+        alignPos.Position = randomPos
+        alignOri.CFrame = CFrame.new(randomPos) * CFrame.Angles(
+            math.random(-3, 3),
+            math.random(-3, 3),
+            math.random(-3, 3)
         )
         
-        -- Daño constante
-        pcall(function()
-            tHum:TakeDamage(1)
-        end)
+        hrp.AssemblyLinearVelocity = Vector3.new(
+            math.random(-5000, 5000),
+            math.random(-5000, 5000),
+            math.random(-5000, 5000)
+        )
     end)
     
-    -- Verificador de muerte
     task.spawn(function()
         while Flinging and CurrentTarget do
-            task.wait(0.3)
-            if not CurrentTarget then break end
-            
-            local tChar = GetChar(CurrentTarget)
-            if not tChar then
-                StopFling()
+            task.wait(0.5)
+            if not CurrentTarget.Character then
+                StopLoopFling()
                 break
             end
-            
-            local tHum = tChar:FindFirstChild("Humanoid")
-            if not tHum or tHum.Health <= 0 then
-                StopFling()
+            local th = CurrentTarget.Character:FindFirstChild("Humanoid")
+            if not th or th.Health <= 0 then
+                StopLoopFling()
                 break
             end
         end
@@ -330,191 +281,133 @@ end
 
 -- VOID
 local function VoidPlayer(target)
-    if not target then return end
+    if not target or not target.Character then return end
     
-    local tChar = GetChar(target)
-    if not tChar then return end
+    print("[Stand] Enviando al vacío: " .. target.Name)
     
-    local tHRP = tChar:FindFirstChild("HumanoidRootPart")
-    if not tHRP then return end
-    
-    print("[Stand] Void: " .. target.Name)
-    
-    -- Fling final
-    tHRP.Velocity = Vector3.new(0, -50000, 0)
-    tHRP.CFrame = CFrame.new(0, VOID_DEPTH, 0)
+    local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+    if tHRP then
+        tHRP.AssemblyLinearVelocity = Vector3.new(0, -10000, 0)
+        tHRP.CFrame = CFrame.new(0, VOID_DEPTH, 0)
+    end
     
     task.wait(0.1)
-    StopFling()
-    
-    local tHum = tChar:FindFirstChild("Humanoid")
-    if tHum then
-        tHum.Health = 0
-    end
+    StopLoopFling()
 end
 
--- FALL (todos menos WL)
+-- FALL
 local function FallAll()
-    print("[Stand] FALL activado")
+    print("[Stand] Activando FALL para todos...")
     
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
-        if IsWL(player.Name) then continue end
+        if IsWhitelisted(player.Name) then continue end
         
-        local pChar = GetChar(player)
-        if not pChar then continue end
-        
-        local pHRP = pChar:FindFirstChild("HumanoidRootPart")
-        if not pHRP then continue end
-        
-        -- Lanzar arriba y caer
-        pHRP.Velocity = Vector3.new(0, 2000, 0)
-        
-        task.delay(0.5, function()
-            if pHRP then
-                pHRP.Velocity = Vector3.new(0, -10000, 0)
+        if player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 1000, 0)
+                task.delay(0.5, function()
+                    if hrp then
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, -5000, 0)
+                    end
+                end)
             end
-        end)
+        end
     end
 end
 
 -- BRING
-local function Bring()
+local function BringStand()
     StopOrbit()
-    StopFling()
+    StopLoopFling()
     
-    local owner = GetOwnerPlayer()
+    local owner = GetOwner()
     local hrp = GetHRP()
     
-    if owner and GetHRP(owner) and hrp then
-        local ownerPos = GetHRP(owner).Position
-        hrp.CFrame = CFrame.new(ownerPos + Vector3.new(0, 5, 5))
-        print("[Stand] Traído al owner")
+    if owner and owner.Character and hrp then
+        local ownerPos = owner.Character:GetPivot().Position
+        hrp.CFrame = CFrame.new(ownerPos + Vector3.new(0, 5, 3))
+        print("[Stand] Stand traído al owner")
     end
 end
 
 -- WHITELIST
-local function AddWL(name)
-    if not name or name == "" then return end
-    
-    local target = FindPlayer(name)
-    if target then
-        Whitelist[string.lower(target.Name)] = true
-        print("[Stand] WL agregado: " .. target.Name)
+local function AddWhitelist(name)
+    local player = GetPlayer(name)
+    if player then
+        Whitelist[player.Name:lower()] = true
+        print("[Stand] Agregado a whitelist: " .. player.Name)
     else
-        Whitelist[string.lower(name)] = true
-        print("[Stand] WL agregado (offline): " .. name)
+        Whitelist[name:lower()] = true
+        print("[Stand] Agregado a whitelist (offline): " .. name)
     end
 end
 
-local function RemoveWL(name)
-    if not name or name == "" then return end
-    local key = string.lower(name)
-    
+local function RemoveWhitelist(name)
+    local key = name:lower()
     if Whitelist[key] then
         Whitelist[key] = nil
-        print("[Stand] WL removido: " .. name)
-    else
-        print("[Stand] No estaba en WL: " .. name)
+        print("[Stand] Removido de whitelist: " .. name)
     end
 end
 
 -- COMANDOS
 local function ProcessCommand(msg, sender)
-    if not sender then return end
+    local senderName = sender.Name:lower()
     
-    local senderName = string.lower(sender.Name)
-    
-    -- Verificar permisos
-    if senderName ~= OwnerName and not IsWL(sender.Name) then
+    if senderName ~= OwnerName and not IsWhitelisted(sender.Name) then
         return
     end
     
-    -- Parsear args
     local args = {}
-    for arg in string.gmatch(msg, "%S+") do
+    for arg in msg:gmatch("%S+") do
         table.insert(args, arg)
     end
     
-    if #args == 0 then return end
-    if string.sub(args[1], 1, 1) ~= Prefix then return end
+    if #args == 0 or args[1]:sub(1, 1) ~= Prefix then return end
     
-    local cmd = string.lower(string.sub(args[1], 2))
-    local arg2 = args[2]
+    local cmd = args[1]:sub(2):lower()
     
-    -- EJECUTAR COMANDOS
-    if cmd == "lk" and arg2 then
-        local t = FindPlayer(arg2)
-        if t then StartFling(t) end
-        
+    if cmd == "lk" and args[2] then
+        local target = GetPlayer(args[2])
+        if target then StartLoopFling(target) end
     elseif cmd == "unlk" then
-        StopFling()
-        
-    elseif cmd == "v" and arg2 then
-        local t = FindPlayer(arg2)
-        if t then VoidPlayer(t) end
-        
+        StopLoopFling()
+    elseif cmd == "v" and args[2] then
+        local target = GetPlayer(args[2])
+        if target then VoidPlayer(target) end
     elseif cmd == "b" then
-        Bring()
-        
-    elseif cmd == "wl" and arg2 then
-        AddWL(arg2)
-        
-    elseif cmd == "unwl" and arg2 then
-        RemoveWL(arg2)
-        
+        BringStand()
+    elseif cmd == "wl" and args[2] then
+        AddWhitelist(args[2])
+    elseif cmd == "unwl" and args[2] then
+        RemoveWhitelist(args[2])
     elseif cmd == "fall" then
         FallAll()
-        
     elseif cmd == "orbit" then
         StartOrbit()
-        
     elseif cmd == "unorbit" then
         StopOrbit()
-        
-    elseif cmd == "kill" and arg2 then
-        local t = FindPlayer(arg2)
-        if t then
-            local h = GetHum(t)
-            if h then h.Health = 0 end
-        end
     end
 end
 
--- CONECTAR CHAT
+-- CONEXIONES DE CHAT
 for _, p in ipairs(Players:GetPlayers()) do
-    p.Chatted:Connect(function(m)
-        ProcessCommand(m, p)
-    end)
+    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
 end
 
 Players.PlayerAdded:Connect(function(p)
-    p.Chatted:Connect(function(m)
-        ProcessCommand(m, p)
-    end)
+    p.Chatted:Connect(function(m) ProcessCommand(m, p) end)
 end)
 
--- RESPAWN HANDLER
 LocalPlayer.CharacterAdded:Connect(function(char)
-    task.wait(0.5)
+    task.wait(0.3)
     if Orbiting then
         StartOrbit()
     end
 end)
 
--- ANTI-AFK
-VirtualUser.Idled:Connect(function()
-    VirtualUser:Button2Down(Vector2.zero, Workspace.CurrentCamera.CFrame)
-    task.wait(1)
-    VirtualUser:Button2Up(Vector2.zero, Workspace.CurrentCamera.CFrame)
-end)
+task.delay(1, StartOrbit)
 
--- INICIAR ÓRBITA AUTOMÁTICO
-task.delay(2, StartOrbit)
-
--- PRINT INFO
-print("=== [STAND] Sistema Cargado ===")
-print("Owner: " .. getgenv().Owner)
-print("Radio: 3000 studs (ULTRA LEJOS)")
-print("Comandos: .lk .unlk .v .b .wl .unwl .fall .orbit .unorbit")
-print("===============================")
+print("[STAND] Creado e iniciado correctamente con distancia extendida.")
